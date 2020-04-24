@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import './prayertime.dart';
 
 void main() {
@@ -18,12 +19,14 @@ class _HomeState extends State<Home> {
   final Geolocator geolocator = Geolocator()..forceAndroidLocationManager;
 
   Position _currentPosition;
-  String _currentAddress = 'Makassar';
+  String _currentAddress;
 
   List<String> _prayerTimes = [];
   List<String> _prayerNames = [];
 
-  TextEditingController controllerLocatin = TextEditingController();
+  double savedLat;
+  double savedLong;
+  double savedTimezone;
 
   List<String> dummy = [
     "Fajr",
@@ -39,7 +42,11 @@ class _HomeState extends State<Home> {
   void initState() {
     // TODO: implement initState
     super.initState();
-    getPrayerTimes(-5.165048, 119.4369173);
+    getPref();
+
+    print('di init saved lat ' + savedLat.toString());
+    print('di init saved long ' + savedLong.toString());
+    print('di init saved tz ' + savedTimezone.toString());
   }
 
   @override
@@ -75,6 +82,7 @@ class _HomeState extends State<Home> {
                             SizedBox(width: 10),
                             Container(
                                 width: 150,
+                                padding: EdgeInsets.only(left: 10),
                                 decoration: BoxDecoration(
                                   borderRadius:
                                       BorderRadius.all(Radius.circular(5)),
@@ -94,15 +102,12 @@ class _HomeState extends State<Home> {
                 Icons.location_on,
                 color: Colors.white,
               ), //`Icon` to display
-              label: Text(
-                  _currentAddress.isNotEmpty ? _currentAddress : 'Surabaya',
+              label: Text(_currentAddress,
                   style: TextStyle(
                       color: Colors.white,
                       fontFamily: 'Montserrat')), //`Text` to display
               onPressed: () {
                 _getCurrentLocation();
-                //Code to execute when Floating Action Button is clicked
-                //...
               },
             ),
           ]),
@@ -136,13 +141,19 @@ class _HomeState extends State<Home> {
         _currentAddress = "${place.locality}";
       });
 
-      getPrayerTimes(_currentPosition.latitude, _currentPosition.longitude);
+      String tmx = "${DateTime.now().timeZoneOffset}";
+      var zoneTime = double.parse(tmx[0]);
+
+      setPref(_currentPosition.latitude, _currentPosition.longitude, zoneTime,
+          _currentAddress);
+      getPrayerTimes(
+          _currentPosition.latitude, _currentPosition.longitude, zoneTime);
     } catch (e) {
       print(e);
     }
   }
 
-  getPrayerTimes(double lat, double long) {
+  getPrayerTimes(double lat, double long, double zt) {
     PrayerTime prayers = new PrayerTime();
 
     prayers.setTimeFormat(prayers.getTime12());
@@ -160,15 +171,46 @@ class _HomeState extends State<Home> {
       2
     ]; // {Fajr,Sunrise,Dhuhr,Asr,Sunset,Maghrib,Isha}
     prayers.tune(offsets);
-    String tmx = "${DateTime.now().timeZoneOffset}";
-    print(tmx[0]);
 
     var currentTime = DateTime.now();
-    var zoneTime = double.parse(tmx[0]);
 
     setState(() {
-      _prayerTimes = prayers.getPrayerTimes(currentTime, lat, long, zoneTime);
+      _prayerTimes = prayers.getPrayerTimes(currentTime, lat, long, zt);
       _prayerNames = prayers.getTimeNames();
+    });
+  }
+
+  void setPref(double lat, double long, double tz, String ca) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    await prefs.setDouble("savedLat", lat);
+    await prefs.setDouble("savedLong", long);
+    await prefs.setDouble("savedTimezone", tz);
+    await prefs.setString("_currentAddress", ca);
+  }
+
+  void getPref() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    savedLat = prefs.getDouble("savedLat");
+    savedLong = prefs.getDouble("savedLong");
+    savedTimezone = prefs.getDouble("savedTimezone");
+    _currentAddress = prefs.getString("_currentAddress");
+
+    print('saved lat ' + savedLat.toString());
+    print('saved long ' + savedLong.toString());
+    print('saved tz ' + savedTimezone.toString());
+    print('currentAddress ' + _currentAddress.toString());
+
+    setState(() {
+      if (savedLat != null) {
+        getPrayerTimes(savedLat, savedLong, savedTimezone);
+        _currentAddress = prefs.getString("_currentAddress");
+        print('tidak null');
+      } else {
+        getPrayerTimes(-5.165048, 119.4369173, 8.0);
+        _currentAddress = "Malang";
+        print('ini null');
+      }
     });
   }
 }
